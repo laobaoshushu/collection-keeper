@@ -141,10 +141,25 @@
   .toast{position:fixed;left:50%;bottom:40px;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:11px;padding:11px 18px;font-size:13px;z-index:100;box-shadow:var(--shadow-hover);opacity:0;pointer-events:none;transition:opacity .2s}
   .toast.show{opacity:1}
 
+  /* ===== 移动端抽屉按钮 / 遮罩 ===== */
+  .menu-toggle{display:none;width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:18px;align-items:center;justify-content:center;flex-shrink:0;box-shadow:var(--shadow)}
+  .backdrop{position:fixed;inset:0;background:rgba(16,24,40,.42);z-index:55;opacity:0;pointer-events:none;transition:opacity .25s}
+  .backdrop.show{opacity:1;pointer-events:auto}
+  .side-close{display:none}
+
   @media (max-width:860px){
-    .app{flex-direction:column}
-    .sidebar{width:100%;height:auto;position:static;border-right:none;border-bottom:1px solid var(--line)}
+    .menu-toggle{display:flex}
+    .sidebar{position:fixed;left:0;top:0;height:100vh;width:280px;max-width:82vw;transform:translateX(-100%);transition:transform .25s ease;z-index:60;box-shadow:var(--shadow-hover);border-right:1px solid var(--line)}
+    .sidebar.open{transform:translateX(0)}
+    .side-close{display:flex;position:absolute;top:18px;right:14px;width:30px;height:30px;border-radius:9px;color:var(--ink-2);font-size:16px;align-items:center;justify-content:center}
+    .side-close:hover{background:var(--bg)}
+    .main{padding:16px 14px}
+    .topbar{flex-wrap:wrap;gap:10px}
+    .search{flex:1 1 auto;min-width:0;max-width:none}
+    .grid{grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:12px}
+    .card-cover{height:150px}
     .form-grid,.img-row{grid-template-columns:1fr}
+    .modal{border-radius:16px}
   }
 </style>
 </head>
@@ -152,6 +167,7 @@
 <div class="app">
   <!-- ===== 侧栏：分类 ===== -->
   <aside class="sidebar">
+    <button class="side-close" id="sideClose" aria-label="关闭菜单">✕</button>
     <div class="logo">已购<span>收藏夹</span></div>
     <div class="sub">记录每一件入手之物</div>
     <div id="catList"></div>
@@ -169,10 +185,12 @@
       <input type="file" id="importFile" accept="application/json" hidden>
     </div>
   </aside>
+  <div class="backdrop" id="sideBackdrop"></div>
 
   <!-- ===== 主区 ===== -->
   <main class="main">
     <div class="topbar">
+      <button class="menu-toggle" id="menuBtn" aria-label="打开筛选菜单">☰</button>
       <div class="search">
         <span class="icon">🔍</span>
         <input id="searchInput" placeholder="搜索名称、品牌、评论…">
@@ -459,7 +477,7 @@ function renderCats(){
     el.addEventListener('click', e=>{
       const del = e.target.closest('.cat-del');
       if(del){ removeCat(del.dataset.del); return; }
-      activeCat = el.dataset.cat; render();
+      activeCat = el.dataset.cat; render(); closeSidebar();
     });
   });
 }
@@ -485,7 +503,7 @@ function renderBrands(){
   wrap.querySelectorAll('.brand-tag').forEach(el=>{
     el.addEventListener('click', ()=>{
       activeBrand = el.dataset.brand === activeBrand ? '' : el.dataset.brand;
-      render();
+      render(); closeSidebar();
     });
   });
   $('resetBrand').hidden = !activeBrand;
@@ -729,6 +747,15 @@ $('importFile').addEventListener('change', async e=>{
 $('searchInput').addEventListener('input', e=>{ keyword = e.target.value.trim(); renderGrid(); });
 $('resetBrand').addEventListener('click', ()=>{ activeBrand = ''; render(); });
 $('addBtn').addEventListener('click', ()=> openModal(null));
+
+/* ===== 移动端侧栏抽屉 ===== */
+const sidebarEl = $('catList').closest('.sidebar');
+function openSidebar(){ sidebarEl.classList.add('open'); $('sideBackdrop').classList.add('show'); }
+function closeSidebar(){ sidebarEl.classList.remove('open'); $('sideBackdrop').classList.remove('show'); }
+$('menuBtn').addEventListener('click', openSidebar);
+$('sideClose').addEventListener('click', closeSidebar);
+$('sideBackdrop').addEventListener('click', closeSidebar);
+window.addEventListener('resize', ()=>{ if(window.innerWidth > 860) closeSidebar(); });
 
 (async function init(){
   await openDB();
