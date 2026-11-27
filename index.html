@@ -80,6 +80,12 @@
   .card-cover .ph{color:var(--ink-3);font-size:13px}
   .card-body{padding:14px 15px 15px}
   .card-cat{display:inline-block;font-size:11px;color:var(--brand);background:var(--brand-soft);border-radius:6px;padding:2px 8px;margin-bottom:8px}
+  .card-status{display:inline-block;font-size:11px;border-radius:6px;padding:2px 8px;margin-bottom:8px;margin-left:6px}
+  .st-new{color:#2ea121;background:#eaf7ea}
+  .st-use{color:var(--brand);background:var(--brand-soft)}
+  .st-done{color:var(--ink-3);background:var(--bg)}
+  .card-expiry{font-size:12px;color:var(--ink-3);margin-top:4px}
+  .card-expiry.expired{color:var(--danger)}
   .card-name{font-size:15px;font-weight:600;line-height:1.4;margin-bottom:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .card-brand{font-size:12px;color:var(--ink-3);margin-bottom:9px}
   .card-meta{display:flex;align-items:center;justify-content:space-between}
@@ -116,7 +122,7 @@
   .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--brand)}
   .field textarea{resize:vertical;min-height:72px}
 
-  .img-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:6px 0 4px}
+  .img-row{display:grid;grid-template-columns:1fr;gap:14px;margin:6px 0 4px}
   .img-slot{border:1.5px dashed var(--line);border-radius:14px;padding:12px;text-align:center;transition:border-color .15s}
   .img-slot.has{border-style:solid;border-color:var(--line)}
   .img-slot label{font-size:13px;color:var(--ink-2);font-weight:500;display:block;margin-bottom:8px}
@@ -219,13 +225,6 @@
           <input type="file" id="fileProduct" accept="image/*">
           <div class="img-status" id="statusProduct"></div>
         </div>
-        <div class="img-slot" id="slotOrder">
-          <label>订单页截图</label>
-          <div class="preview" id="previewOrder"><span class="ph">上传订单页图片</span></div>
-          <label class="pick" for="fileOrder">选择图片</label>
-          <input type="file" id="fileOrder" accept="image/*">
-          <div class="img-status" id="statusOrder"></div>
-        </div>
       </div>
 
       <div class="form-grid" style="margin-top:16px">
@@ -248,6 +247,18 @@
         <div class="field">
           <label>购买时间</label>
           <input id="fDate" type="date">
+        </div>
+        <div class="field">
+          <label>到期日期</label>
+          <input id="fExpiry" type="date">
+        </div>
+        <div class="field">
+          <label>物品状态</label>
+          <select id="fStatus">
+            <option value="全新">全新</option>
+            <option value="使用">使用</option>
+            <option value="已用">已用</option>
+          </select>
         </div>
         <div class="field">
           <label>分类</label>
@@ -318,8 +329,8 @@ let editingId = null;
 
 // 表单临时状态
 const form = {
-  imgProduct: null, imgOrder: null,
-  textProduct: '', textOrder: '',
+  imgProduct: null,
+  textProduct: '',
   rating: 0
 };
 
@@ -329,6 +340,21 @@ const form = {
 const $ = id=> document.getElementById(id);
 const uid = ()=> 'it_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 const esc = s=> String(s ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function fmtDate(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+// 购买日期 + 一年，作为到期日期默认值
+function defaultExpiry(dateStr){
+  if(!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  if(isNaN(d)) return '';
+  d.setFullYear(d.getFullYear()+1);
+  return fmtDate(d);
+}
+function daysBetween(a,b){
+  const da=new Date(a+'T00:00:00'), db=new Date(b+'T00:00:00');
+  if(isNaN(da)||isNaN(db)) return null;
+  return Math.round((db-da)/86400000);
+}
 
 function toast(msg){
   const t = $('toast'); t.textContent = msg; t.classList.add('show');
@@ -410,27 +436,30 @@ function extractTitle(text){
 
 // 两张图文本就绪后合并填充（不覆盖用户已填写的内容）
 function fillFromOcr(){
-  const p = form.textProduct, o = form.textOrder;
-  const price = extractPrice(o) ?? extractPrice(p);
-  const date  = extractDate(o)  ?? extractDate(p);
-  const brand = extractBrand(p) || extractBrand(o);
-  const title = extractTitle(p) || extractTitle(o);
+  const p = form.textProduct;
+  const price = extractPrice(p);
+  const date  = extractDate(p);
+  const brand = extractBrand(p);
+  const title = extractTitle(p);
 
   if(title && !$('fName').value.trim())  $('fName').value = title;
   if(brand && !$('fBrand').value.trim()) $('fBrand').value = brand;
   if(price != null && !$('fPrice').value) $('fPrice').value = price;
-  if(date && !$('fDate').value)         $('fDate').value = date;
+  if(date && !$('fDate').value){
+    $('fDate').value = date;
+    if(!$('fExpiry').value) $('fExpiry').value = defaultExpiry(date);
+  }
 }
 
-async function runOcr(which, dataUrl){
-  const statusEl = which === 'product' ? $('statusProduct') : $('statusOrder');
+async function runOcr(dataUrl){
+  const statusEl = $('statusProduct');
   statusEl.className = 'img-status doing';
   statusEl.textContent = '识别中…';
   ocrRunning++;
   $('ocrBanner').hidden = false;
   try{
     const text = await recognizeImage(dataUrl);
-    if(which === 'product') form.textProduct = text; else form.textOrder = text;
+    form.textProduct = text;
     statusEl.className = 'img-status done';
     statusEl.textContent = text ? `识别到 ${text.length} 字` : '未识别到文字';
     fillFromOcr();
@@ -519,6 +548,8 @@ function renderGrid(){
   const list = filteredItems();
   $('statLine').textContent = `共 ${list.length} 件收藏`;
   const grid = $('grid');
+  const stMap = {'全新':'st-new','使用':'st-use','已用':'st-done'};
+  const today = fmtDate(new Date());
   if(!list.length){
     grid.innerHTML = `<div class="empty" style="grid-column:1/-1">
       <div class="big">📦</div>
@@ -532,10 +563,11 @@ function renderGrid(){
         <button class="del" data-act="del" title="删除">🗑</button>
       </div>
       <div class="card-cover">
-        ${it.imgCover ? `<img src="${it.imgCover}" alt="">` : it.imgProduct ? `<img src="${it.imgProduct}" alt="">` : it.imgOrder ? `<img src="${it.imgOrder}" alt="">` : '<span class="ph">暂无图片</span>'}
+        ${it.imgCover ? `<img src="${it.imgCover}" alt="">` : it.imgProduct ? `<img src="${it.imgProduct}" alt="">` : '<span class="ph">暂无图片</span>'}
       </div>
       <div class="card-body">
         <span class="card-cat">${esc(it.category || '未分类')}</span>
+        ${it.status ? `<span class="card-status ${stMap[it.status]||''}">${esc(it.status)}</span>` : ''}
         <div class="card-name">${esc(it.name)}</div>
         <div class="card-brand">${esc(it.brand || '—')}</div>
         <div class="card-meta">
@@ -543,6 +575,7 @@ function renderGrid(){
           ${starsHtml(it.rating || 0)}
         </div>
         <div class="card-date">${esc(it.purchaseDate || '未填日期')}</div>
+        ${it.expiryDate ? `<div class="card-expiry ${daysBetween(it.expiryDate, today) > 0 ? 'expired' : ''}">到期 ${esc(it.expiryDate)}</div>` : ''}
       </div>
     </div>`).join('');
 
@@ -604,15 +637,15 @@ function fillCategorySelect(){
 
 function resetForm(){
   editingId = null;
-  form.imgProduct = form.imgOrder = null;
-  form.textProduct = form.textOrder = '';
+  form.imgProduct = null;
+  form.textProduct = '';
   form.rating = 0;
   $('fName').value = ''; $('fBrand').value = ''; $('fPrice').value = '';
-  $('fDate').value = ''; $('fComment').value = '';
+  $('fDate').value = ''; $('fExpiry').value = ''; $('fStatus').value = '全新';
+  $('fComment').value = '';
   $('previewProduct').innerHTML = '<span class="ph">上传商品页图片</span>';
-  $('previewOrder').innerHTML = '<span class="ph">上传订单页图片</span>';
-  $('statusProduct').textContent = ''; $('statusOrder').textContent = '';
-  $('statusProduct').className = 'img-status'; $('statusOrder').className = 'img-status';
+  $('statusProduct').textContent = '';
+  $('statusProduct').className = 'img-status';
   $('ocrBanner').hidden = true;
   renderRate(); fillCategorySelect();
 }
@@ -627,13 +660,13 @@ function openModal(id){
     $('fBrand').value = it.brand || '';
     $('fPrice').value = it.price ?? '';
     $('fDate').value = it.purchaseDate || '';
+    $('fExpiry').value = it.expiryDate || defaultExpiry(it.purchaseDate) || '';
+    $('fStatus').value = it.status || '全新';
     $('fComment').value = it.comment || '';
     $('fCategory').value = it.category || cats[cats.length-1];
     form.rating = it.rating || 0;
     form.imgProduct = it.imgProduct || null;
-    form.imgOrder = it.imgOrder || null;
     if(it.imgProduct) $('previewProduct').innerHTML = `<img src="${it.imgProduct}">`;
-    if(it.imgOrder)   $('previewOrder').innerHTML   = `<img src="${it.imgOrder}">`;
     renderRate();
   }else{
     $('modalTitle').textContent = '添加收藏';
@@ -643,28 +676,22 @@ function openModal(id){
 
 function closeModal(){ $('mask').hidden = true; }
 
-async function handleFile(which, file){
+async function handleFile(file){
   if(!file) return;
   const dataUrl = await compressImage(file);
   if(!dataUrl){ toast('图片读取失败'); return; }
-  if(which === 'product'){
-    form.imgProduct = dataUrl;
-    $('previewProduct').innerHTML = `<img src="${dataUrl}">`;
-  }else{
-    form.imgOrder = dataUrl;
-    $('previewOrder').innerHTML = `<img src="${dataUrl}">`;
-  }
+  form.imgProduct = dataUrl;
+  $('previewProduct').innerHTML = `<img src="${dataUrl}">`;
   // 触发 OCR
   if(typeof Tesseract === 'undefined'){
-    const st = which==='product' ? $('statusProduct') : $('statusOrder');
-    st.className = 'img-status err'; st.textContent = 'OCR 库未加载，请手工填写';
+    $('statusProduct').className = 'img-status err';
+    $('statusProduct').textContent = 'OCR 库未加载，请手工填写';
     return;
   }
-  await runOcr(which, dataUrl);
+  await runOcr(dataUrl);
 }
 
-$('fileProduct').addEventListener('change', e=> handleFile('product', e.target.files[0]));
-$('fileOrder').addEventListener('change', e=> handleFile('order', e.target.files[0]));
+$('fileProduct').addEventListener('change', e=> handleFile(e.target.files[0]));
 
 $('modalClose').addEventListener('click', closeModal);
 $('cancelBtn').addEventListener('click', closeModal);
@@ -679,11 +706,12 @@ $('saveBtn').addEventListener('click', async ()=>{
     brand: $('fBrand').value.trim(),
     price: $('fPrice').value === '' ? '' : Number($('fPrice').value),
     purchaseDate: $('fDate').value,
+    expiryDate: $('fExpiry').value,
+    status: $('fStatus').value,
     category: $('fCategory').value,
     rating: form.rating,
     comment: $('fComment').value.trim(),
     imgProduct: form.imgProduct,
-    imgOrder: form.imgOrder,
     updatedAt: Date.now()
   };
   await dbPut(record);
@@ -745,6 +773,10 @@ $('importFile').addEventListener('change', async e=>{
  * 搜索 / 启动
  * ============================================================ */
 $('searchInput').addEventListener('input', e=>{ keyword = e.target.value.trim(); renderGrid(); });
+$('fDate').addEventListener('change', ()=>{
+  const d = $('fDate').value;
+  $('fExpiry').value = d ? defaultExpiry(d) : '';
+});
 $('resetBrand').addEventListener('click', ()=>{ activeBrand = ''; render(); });
 $('addBtn').addEventListener('click', ()=> openModal(null));
 
