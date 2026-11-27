@@ -41,6 +41,18 @@
   .cat-add input:focus{border-color:var(--brand)}
   .cat-add button{width:32px;border-radius:8px;background:var(--brand-soft);color:var(--brand);font-size:16px}
 
+  /* ===== 品牌标签云 ===== */
+  .brand-cloud{margin-top:22px;padding:0 4px}
+  .cloud-title{font-size:12px;color:var(--ink-3);margin:0 4px 10px;display:flex;justify-content:space-between;align-items:center}
+  .cloud-title button{font-size:12px;color:var(--brand);padding:0 2px}
+  .brand-tags{display:flex;flex-wrap:wrap;gap:7px}
+  .brand-tag{border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:5px 11px;color:var(--ink-2);cursor:pointer;transition:all .15s;max-width:100%}
+  .brand-tag:hover{border-color:var(--brand);color:var(--brand)}
+  .brand-tag.active{background:var(--brand-soft);border-color:var(--brand);color:var(--brand);font-weight:600}
+  .brand-tag .bc{font-size:11px;color:var(--ink-3);margin-left:4px}
+  .brand-tag.active .bc{color:var(--brand)}
+  .brand-tag .bl{display:inline-block;max-width:128px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+
   .side-tools{margin-top:24px;padding:0 4px;display:flex;flex-direction:column;gap:8px}
   .side-tools button{text-align:left;font-size:13px;color:var(--ink-2);padding:8px 10px;border-radius:8px}
   .side-tools button:hover{background:var(--bg)}
@@ -146,6 +158,10 @@
     <div class="cat-add">
       <input id="newCat" placeholder="新分类名称" maxlength="12">
       <button id="addCatBtn" title="添加分类">+</button>
+    </div>
+    <div class="brand-cloud">
+      <div class="cloud-title"><span>品牌标签</span><button id="resetBrand" hidden>清除筛选</button></div>
+      <div id="brandCloud" class="brand-tags"></div>
     </div>
     <div class="side-tools">
       <button id="exportBtn">⬇ 导出备份（JSON）</button>
@@ -278,6 +294,7 @@ const DEFAULT_CATS = SEED.cats;
 let items = [];
 let cats = [...DEFAULT_CATS];
 let activeCat = '全部';
+let activeBrand = '';
 let keyword = '';
 let editingId = null;
 
@@ -414,6 +431,10 @@ async function runOcr(which, dataUrl){
 function filteredItems(){
   return items.filter(it=>{
     if(activeCat !== '全部' && it.category !== activeCat) return false;
+    if(activeBrand){
+      const bk = (it.brand || '').trim() || '__none__';
+      if(bk !== activeBrand) return false;
+    }
     if(keyword){
       const hay = `${it.name} ${it.brand} ${it.comment}`.toLowerCase();
       if(!hay.includes(keyword.toLowerCase())) return false;
@@ -441,6 +462,33 @@ function renderCats(){
       activeCat = el.dataset.cat; render();
     });
   });
+}
+
+function brandKey(b){
+  const t = (b || '').trim();
+  if(!t || /^[—\-–_·\s]+$/.test(t)) return '__none__';
+  return t;
+}
+
+function renderBrands(){
+  const wrap = $('brandCloud');
+  const base = items.filter(i=> activeCat === '全部' || i.category === activeCat);
+  const counts = {};
+  base.forEach(i=>{ const k = brandKey(i.brand); counts[k] = (counts[k] || 0) + 1; });
+  const entries = Object.entries(counts).sort((a,b)=> b[1]-a[1] || a[0].localeCompare(b[0], 'zh'));
+  wrap.innerHTML = entries.map(([k,n])=>{
+    const label = k === '__none__' ? '未填品牌' : k;
+    const size = n >= 10 ? 14 : n >= 5 ? 13 : 12;
+    return `<button class="brand-tag ${k===activeBrand?'active':''}" data-brand="${esc(k)}" style="font-size:${size}px">
+      <span class="bl">${esc(label)}</span><span class="bc">${n}</span></button>`;
+  }).join('');
+  wrap.querySelectorAll('.brand-tag').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      activeBrand = el.dataset.brand === activeBrand ? '' : el.dataset.brand;
+      render();
+    });
+  });
+  $('resetBrand').hidden = !activeBrand;
 }
 
 function starsHtml(n){
@@ -494,7 +542,7 @@ function renderGrid(){
   });
 }
 
-function render(){ renderCats(); renderGrid(); }
+function render(){ renderCats(); renderBrands(); renderGrid(); }
 
 /* ============================================================
  * 分类管理
@@ -679,6 +727,7 @@ $('importFile').addEventListener('change', async e=>{
  * 搜索 / 启动
  * ============================================================ */
 $('searchInput').addEventListener('input', e=>{ keyword = e.target.value.trim(); renderGrid(); });
+$('resetBrand').addEventListener('click', ()=>{ activeBrand = ''; render(); });
 $('addBtn').addEventListener('click', ()=> openModal(null));
 
 (async function init(){
