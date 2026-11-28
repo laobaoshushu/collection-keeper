@@ -57,8 +57,23 @@
   .side-tools button{text-align:left;font-size:13px;color:var(--ink-2);padding:8px 10px;border-radius:8px}
   .side-tools button:hover{background:var(--bg)}
 
+  /* ===== 星级筛选栏 ===== */
+  .rating-cloud{margin-top:22px;padding:0 4px}
+  .rate-item{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:10px;color:var(--ink-2);font-size:13px;cursor:pointer;margin-bottom:2px;transition:background .15s}
+  .rate-item:hover{background:var(--bg)}
+  .rate-item.active{background:var(--brand-soft);color:var(--brand);font-weight:600}
+  .rate-stars{letter-spacing:1px;color:var(--star);font-size:13px}
+  .rate-stars .off{color:#dde0e4}
+  .rate-item .count{margin-left:auto;font-size:12px;color:var(--ink-3)}
+  .rate-item.active .count{color:var(--brand)}
+
+  /* ===== 回到顶端浮动按钮 ===== */
+  .back-top{position:fixed;right:26px;bottom:30px;width:44px;height:44px;border-radius:50%;background:var(--brand);color:#fff;font-size:20px;line-height:1;box-shadow:var(--shadow-hover);z-index:80;display:flex;align-items:center;justify-content:center;transition:opacity .2s,transform .2s}
+  .back-top:hover{transform:translateY(-2px)}
+  .back-top[hidden]{display:none}
+
   /* ===== 顶栏 ===== */
-  .topbar{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+  .topbar{display:flex;align-items:center;gap:14px;margin-bottom:18px;position:sticky;top:0;z-index:30;background:var(--card);padding:12px 14px;border-radius:14px;box-shadow:var(--shadow)}
   .search{flex:1;max-width:420px;position:relative}
   .search input{width:100%;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:11px 14px 11px 38px;outline:none;box-shadow:var(--shadow)}
   .search input:focus{border-color:var(--brand)}
@@ -200,6 +215,10 @@
       <input id="newCat" placeholder="新分类名称" maxlength="12">
       <button id="addCatBtn" title="添加分类">+</button>
     </div>
+    <div class="rating-cloud">
+      <div class="cloud-title"><span>星级评级</span></div>
+      <div id="ratingList"></div>
+    </div>
     <div class="brand-cloud">
       <div class="cloud-title"><span>品牌标签</span><button id="resetBrand" hidden>清除筛选</button></div>
       <div id="brandCloud" class="brand-tags"></div>
@@ -302,6 +321,7 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<button class="back-top" id="backTop" title="回到顶端" hidden>↑</button>
 
 <script>
 /* ============================================================
@@ -343,6 +363,7 @@ let items = [];
 let cats = [...DEFAULT_CATS];
 let activeCat = '全部';
 let activeBrand = '';
+let activeRating = 0;
 let keyword = '';
 let editingId = null;
 
@@ -501,6 +522,7 @@ function filteredItems(){
       const bk = (it.brand || '').trim() || '__none__';
       if(bk !== activeBrand) return false;
     }
+    if(activeRating && (it.rating || 0) !== activeRating) return false;
     if(keyword){
       const hay = `${it.name} ${it.brand} ${it.comment}`.toLowerCase();
       if(!hay.includes(keyword.toLowerCase())) return false;
@@ -583,6 +605,25 @@ function renderBrands(){
     });
   });
   $('resetBrand').hidden = !activeBrand;
+}
+
+function renderRatings(){
+  const wrap = $('ratingList');
+  const base = items.filter(i=> activeCat === '全部' || i.category === activeCat);
+  const counts = {5:0,4:0,3:0,2:0,1:0};
+  base.forEach(i=>{ const r = i.rating || 0; if(counts[r] !== undefined) counts[r]++; });
+  wrap.innerHTML = [5,4,3,2,1].map(n=>`
+    <div class="rate-item ${n===activeRating?'active':''}" data-rate="${n}">
+      <span class="rate-stars">${[1,2,3,4,5].map(i=>`<span class="${i<=n?'on':'off'}">★</span>`).join('')}</span>
+      <span class="count">${counts[n]}</span>
+    </div>`).join('');
+  wrap.querySelectorAll('.rate-item').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const n = Number(el.dataset.rate);
+      activeRating = activeRating === n ? 0 : n;
+      render(); closeSidebar();
+    });
+  });
 }
 
 function starsHtml(n){
@@ -669,7 +710,7 @@ function renderGrid(){
   });
 }
 
-function render(){ renderCats(); renderBrands(); renderGrid(); }
+function render(){ renderCats(); renderBrands(); renderRatings(); renderGrid(); }
 
 /* ============================================================
  * 分类管理
@@ -858,6 +899,11 @@ $('fDate').addEventListener('change', ()=>{
   $('fExpiry').value = d ? defaultExpiry(d) : '';
 });
 $('resetBrand').addEventListener('click', ()=>{ activeBrand = ''; render(); });
+
+/* 回到顶端浮动按钮 */
+const backTop = $('backTop');
+window.addEventListener('scroll', ()=>{ backTop.hidden = window.scrollY < 240; }, {passive:true});
+backTop.addEventListener('click', ()=> window.scrollTo({top:0, behavior:'smooth'}));
 $('addBtn').addEventListener('click', ()=> openModal(null));
 
 /* ===== 移动端侧栏抽屉 ===== */
