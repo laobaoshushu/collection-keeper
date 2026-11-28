@@ -100,6 +100,25 @@
   .card-actions button:hover{color:var(--brand)}
   .card-actions button.del:hover{color:var(--danger)}
 
+  /* ===== 复购合并 / 历史记录折叠 ===== */
+  .repurchase{margin-top:10px;border-top:1px dashed var(--line);padding-top:9px}
+  .history-toggle{display:flex;align-items:center;gap:6px;width:100%;font-size:12px;color:var(--brand);background:var(--brand-soft);border-radius:8px;padding:7px 10px;cursor:pointer}
+  .history-toggle .caret{margin-left:auto;transition:transform .18s;font-size:11px}
+  .history-toggle.open .caret{transform:rotate(180deg)}
+  .history-list{margin-top:8px;display:flex;flex-direction:column;gap:8px}
+  .history-list[hidden]{display:none}
+  .history-item{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--bg);cursor:pointer}
+  .history-item:hover{border-color:var(--brand)}
+  .history-thumb{width:40px;height:40px;border-radius:8px;overflow:hidden;background:#f0f1f3;flex:none;display:flex;align-items:center;justify-content:center}
+  .history-thumb img{width:100%;height:100%;object-fit:cover;object-position:top center}
+  .history-thumb .ph{color:var(--ink-3);font-size:11px}
+  .history-info{flex:1;min-width:0}
+  .history-date{font-size:12px;color:var(--ink);font-weight:600}
+  .history-price{font-size:12px;color:var(--ink-3);margin-top:2px}
+  .history-comment{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .history-del{flex:none;width:26px;height:26px;border-radius:8px;background:#fff;box-shadow:var(--shadow);color:var(--ink-3);font-size:12px;cursor:pointer}
+  .history-del:hover{color:var(--danger)}
+
   .empty{text-align:center;padding:90px 20px;color:var(--ink-3)}
   .empty .big{font-size:40px;margin-bottom:14px}
   .empty p{font-size:14px}
@@ -490,6 +509,34 @@ function filteredItems(){
   });
 }
 
+/* 复购分组：规范化名称 + 品牌作为同一产品的匹配键 */
+function groupKey(it){
+  const norm = s=> (s || '').trim().toLowerCase().replace(/[\s\-—–_·（）()【】\[\]，,。.、/\\:：'"’‘]+/g, '');
+  return norm(it.name) + '|' + norm(it.brand);
+}
+// 返回 >0 表示 a 比 b 新（日期兜底 updatedAt）
+function byDateDesc(a, b){
+  const d = (a.purchaseDate || '').localeCompare(b.purchaseDate || '');
+  if(d !== 0) return d;
+  return (a.updatedAt || 0) - (b.updatedAt || 0);
+}
+// 在筛选结果上聚合：每组取最新一条为主条目，其余收入 history
+function buildGroups(){
+  const list = filteredItems();
+  const map = new Map();
+  for(const it of list){
+    const k = groupKey(it);
+    let g = map.get(k);
+    if(!g){ map.set(k, { main: it, history: [] }); continue; }
+    if(byDateDesc(it, g.main) > 0){ g.history.push(g.main); g.main = it; }
+    else g.history.push(it);
+  }
+  const groups = [...map.values()];
+  groups.forEach(g=> g.history.sort((a, b)=> byDateDesc(b, a)));
+  groups.sort((a, b)=> byDateDesc(b.main, a.main));
+  return groups;
+}
+
 function renderCats(){
   const wrap = $('catList');
   const countOf = c=> c === '全部' ? items.length : items.filter(i=> i.category === c).length;
@@ -546,25 +593,45 @@ function starsHtml(n){
 
 function renderGrid(){
   const list = filteredItems();
-  $('statLine').textContent = `共 ${list.length} 件收藏`;
+  const groups = buildGroups();
+  $('statLine').textContent = `共 ${list.length} 件收藏 · ${groups.length} 个商品`;
   const grid = $('grid');
   const stMap = {'全新':'st-new','使用':'st-use','已用':'st-done'};
   const today = fmtDate(new Date());
-  if(!list.length){
+  if(!groups.length){
     grid.innerHTML = `<div class="empty" style="grid-column:1/-1">
       <div class="big">📦</div>
       <p>${items.length ? '没有匹配的物品' : '还没有收藏，点击右上角「添加收藏」开始记录'}</p></div>`;
     return;
   }
-  grid.innerHTML = list.map(it=>`
-    <div class="card" data-id="${it.id}">
+  const coverHtml = it=> it.imgCover ? `<img src="${it.imgCover}" alt="">` : it.imgProduct ? `<img src="${it.imgProduct}" alt="">` : '<span class="ph">暂无图片</span>';
+  grid.innerHTML = groups.map(g=>{
+    const it = g.main;
+    const hist = g.history;
+    const historyHtml = hist.length ? `
+      <div class="repurchase">
+        <button type="button" class="history-toggle" data-toggle="${it.id}">
+          🔁 复购 ${hist.length} 次 · 共 ${hist.length + 1} 件 <span class="caret">▾</span>
+        </button>
+        <div class="history-list" id="hist-${it.id}" hidden>
+          ${hist.map(h=>`
+            <div class="history-item" data-hid="${h.id}">
+              <div class="history-thumb">${h.imgCover || h.imgProduct ? `<img src="${h.imgCover || h.imgProduct}" alt="">` : '<span class="ph">无图</span>'}</div>
+              <div class="history-info">
+                <div class="history-date">${esc(h.purchaseDate || '未填日期')}</div>
+                <div class="history-price">${h.price != null && h.price !== '' ? `¥${esc(h.price)}` : '<small>未填价格</small>'}${h.comment ? `<span class="history-comment">${esc(h.comment)}</span>` : ''}</div>
+              </div>
+              <button type="button" class="history-del" data-act="del" data-id="${h.id}" title="删除该记录">🗑</button>
+            </div>`).join('')}
+        </div>
+      </div>` : '';
+    return `
+    <div class="card" data-mainid="${it.id}">
       <div class="card-actions">
-        <button data-act="edit" title="编辑">✏️</button>
-        <button class="del" data-act="del" title="删除">🗑</button>
+        <button data-act="edit" data-id="${it.id}" title="编辑">✏️</button>
+        <button class="del" data-act="del" data-id="${it.id}" title="删除">🗑</button>
       </div>
-      <div class="card-cover">
-        ${it.imgCover ? `<img src="${it.imgCover}" alt="">` : it.imgProduct ? `<img src="${it.imgProduct}" alt="">` : '<span class="ph">暂无图片</span>'}
-      </div>
+      <div class="card-cover">${coverHtml(it)}</div>
       <div class="card-body">
         <span class="card-cat">${esc(it.category || '未分类')}</span>
         ${it.status ? `<span class="card-status ${stMap[it.status]||''}">${esc(it.status)}</span>` : ''}
@@ -576,19 +643,28 @@ function renderGrid(){
         </div>
         <div class="card-date">${esc(it.purchaseDate || '未填日期')}</div>
         ${it.expiryDate ? `<div class="card-expiry ${daysBetween(it.expiryDate, today) > 0 ? 'expired' : ''}">到期 ${esc(it.expiryDate)}</div>` : ''}
+        ${historyHtml}
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   grid.querySelectorAll('.card').forEach(card=>{
     card.addEventListener('click', e=>{
       const act = e.target.closest('[data-act]');
-      const id = card.dataset.id;
       if(act){
-        if(act.dataset.act === 'edit') openModal(id);
-        else if(act.dataset.act === 'del') removeItem(id);
+        if(act.dataset.act === 'edit') openModal(act.dataset.id);
+        else if(act.dataset.act === 'del') removeItem(act.dataset.id);
         return;
       }
-      openModal(id);
+      const tog = e.target.closest('[data-toggle]');
+      if(tog){
+        const panel = $('hist-' + tog.dataset.toggle);
+        if(panel){ panel.hidden = !panel.hidden; tog.classList.toggle('open', !panel.hidden); }
+        return;
+      }
+      const hist = e.target.closest('.history-item');
+      if(hist){ openModal(hist.dataset.hid); return; }
+      openModal(card.dataset.mainid);
     });
   });
 }
