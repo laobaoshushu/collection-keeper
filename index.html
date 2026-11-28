@@ -796,6 +796,12 @@ window.addEventListener('resize', ()=>{ if(window.innerWidth > 860) closeSidebar
 (async function init(){
   await openDB();
   let existing = await dbAll();
+  const seedIds = new Set(SEED.items.map(i=> i.id));
+  // 同步：旧种子里有、新种子已移除的种子条目从本地库删除；用户自建(it_ 前缀)与本地编辑保留
+  for(const it of existing){
+    if(String(it.id).startsWith('seed_') && !seedIds.has(it.id)){ await dbDel(it.id); }
+  }
+  existing = await dbAll();
   const existIds = new Set(existing.map(i=> i.id));
   // 仅补缺：种子里有而本地库没有的记录写入，不覆盖用户已编辑的内容
   for(const it of SEED.items){
