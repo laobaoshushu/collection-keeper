@@ -625,9 +625,13 @@ $('addCatBtn').addEventListener('click', ()=>{
 function renderRate(){
   $('fRate').innerHTML = [1,2,3,4,5].map(i=>
     `<span data-v="${i}" class="${i<=form.rating?'on':''}">★</span>`).join('');
-  $('fRate').querySelectorAll('span').forEach(s=>{
-    s.addEventListener('click', ()=> form.rating = Number(s.dataset.v));
-    $('fRate').querySelectorAll('span').forEach(x=> x.classList.toggle('on', Number(x.dataset.v) <= form.rating));
+  const spans = [...$('fRate').querySelectorAll('span')];
+  spans.forEach(s=>{
+    s.addEventListener('click', ()=>{
+      const v = Number(s.dataset.v);
+      form.rating = (form.rating === v) ? 0 : v;
+      spans.forEach(x=> x.classList.toggle('on', Number(x.dataset.v) <= form.rating));
+    });
   });
 }
 
